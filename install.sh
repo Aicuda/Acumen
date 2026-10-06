@@ -5,10 +5,9 @@ set -e
 MS_YAML=compose.ms.yaml
 AS_YAML=compose.as.yaml
 SS_YAML=compose.ss.yaml
-OEM_YAML=compose.oem.yaml
 
 cleanup() {
-    rm -f "$MS_YAML" "$AS_YAML" "$SS_YAML" "$OEM_YAML"
+    rm -f "$MS_YAML" "$AS_YAML" "$SS_YAML"
 }
 
 trap cleanup EXIT
@@ -18,17 +17,7 @@ export PRODUCT_NAME="${PRODUCT_NAME:-acumen}"
 IMAGE_TAG="${IMAGE_TAG:-latest}"
 IMAGE_PREFIX="${IMAGE_PREFIX:-quay.io/aicuda}"
 
-# Only acumen-ms has OEM images (acumen-ms-<oem>). acumen-as is the same image for every OEM;
-# its license product is written into the generated compose.yaml below as ACUMEN_LICENSE_PRODUCT.
-case "$OEM" in
-    "")        ;;
-    anasystem) LICENSE_PRODUCT="${LICENSE_PRODUCT:-PRODUCT_ACUMEN_ANASYSTEM}" ;;
-    *)
-        echo "Unknown OEM: ${OEM}" >&2
-        exit 1
-        ;;
-esac
-
+# Only acumen-ms has OEM images (acumen-ms-<oem>); acumen-as and acumen-ss are the same for every OEM.
 MS_IMAGE_TAG="${MS_IMAGE_TAG:-${IMAGE_TAG}}"
 AS_IMAGE_TAG="${AS_IMAGE_TAG:-${IMAGE_TAG}}"
 SS_IMAGE_TAG="${SS_IMAGE_TAG:-${IMAGE_TAG}}"
@@ -105,16 +94,7 @@ $SUDO docker pull $SS_IMAGE \
     || echo "Unable to pull the image ${SS_IMAGE}. Falling back to the local image."
 $SUDO docker run --rm --entrypoint=cat $SS_IMAGE /opt/aicuda/acumen-ss/compose.yaml > "$SS_YAML"
 
-if [ -n "$LICENSE_PRODUCT" ]; then
-    cat > "$OEM_YAML" <<EOF
-services:
-  analytics:
-    environment:
-      ACUMEN_LICENSE_PRODUCT: "${LICENSE_PRODUCT}"
-EOF
-fi
-
-$SUDO $COMPOSE -f "$MS_YAML" -f "$AS_YAML" -f "$SS_YAML" ${LICENSE_PRODUCT:+-f "$OEM_YAML"} config > compose.yaml 2>/dev/null
+$SUDO $COMPOSE -f "$MS_YAML" -f "$AS_YAML" -f "$SS_YAML" config > compose.yaml 2>/dev/null
 $SUDO $COMPOSE down --remove-orphans
 echo "Start containers..."
 $SUDO $COMPOSE up -d
