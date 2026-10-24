@@ -5,9 +5,10 @@ set -e
 MS_YAML=compose.ms.yaml
 AS_YAML=compose.as.yaml
 SS_YAML=compose.ss.yaml
+DEPS_YAML=compose.deps.yaml
 
 cleanup() {
-    rm -f "$MS_YAML" "$AS_YAML" "$SS_YAML"
+    rm -f "$MS_YAML" "$AS_YAML" "$SS_YAML" "$DEPS_YAML"
 }
 
 trap cleanup EXIT
@@ -94,7 +95,20 @@ $SUDO docker pull $SS_IMAGE \
     || echo "Unable to pull the image ${SS_IMAGE}. Falling back to the local image."
 $SUDO docker run --rm --entrypoint=cat $SS_IMAGE /opt/aicuda/acumen-ss/compose.yaml > "$SS_YAML"
 
-$SUDO $COMPOSE -f "$MS_YAML" -f "$AS_YAML" -f "$SS_YAML" config > compose.yaml 2>/dev/null
+# Start order across the products. Each image's compose.yaml names only its own
+# services so it stays runnable on its own; the cross-product dependencies live here.
+# acumen-as runs the results-schema migration on start, so Postgres must be healthy first.
+cat > "$DEPS_YAML" <<'EOF'
+services:
+  analytics:
+    depends_on:
+      timescaledb:
+        condition: service_healthy
+        restart: true
+        required: true
+EOF
+
+$SUDO $COMPOSE -f "$MS_YAML" -f "$AS_YAML" -f "$SS_YAML" -f "$DEPS_YAML" config > compose.yaml 2>/dev/null
 $SUDO $COMPOSE down --remove-orphans
 echo "Start containers..."
 $SUDO $COMPOSE up -d
